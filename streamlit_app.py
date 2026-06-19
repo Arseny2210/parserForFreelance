@@ -232,16 +232,22 @@ if st.session_state.running:
         total_steps = len(sources) + 5
         step = 0
 
-        for src in sources:
-            step += 1
-            pct = int(step / total_steps * 60)
-            label_text = f"📥 {AVAILABLE_SOURCES.get(src, src)}..."
-            bar.progress(pct, text=label_text)
-            status.update(label=label_text, state="running")
-            collected = run_async(a.collect_source(src))
-            status.write(
-                f"✓ {len(collected)} задач с {AVAILABLE_SOURCES.get(src, src)}"
-            )
+            for src in sources:
+                step += 1
+                pct = int(step / total_steps * 60)
+                label_text = f"📥 {AVAILABLE_SOURCES.get(src, src)}..."
+                bar.progress(pct, text=label_text)
+                status.update(label=label_text, state="running")
+                collected = run_async(a.collect_source(src))
+                status.write(
+                    f"✓ {len(collected)} задач с {AVAILABLE_SOURCES.get(src, src)}"
+                )
+
+            if not a.tasks:
+                bar.progress(50, text="🔄 Парсер не дал результатов — генерация demo-данных...")
+                status.update(label="Парсер не дал результатов — генерация demo-данных...", state="running")
+                run_async(a.run_with_demo())
+                status.write(f"✓ Сгенерировано {len(a.tasks)} demo-задач")
 
             step += 1
             bar.progress(62, text="🏷️ Классификация...")
