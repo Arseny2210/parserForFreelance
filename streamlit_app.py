@@ -355,10 +355,10 @@ with tab_overview:
     if ba:
         st.subheader("Бюджет")
         bc = st.columns(4)
-        bc[0].metric("Средний", f"₽{ba.get('average_budget_min', 0):,.0f}")
-        bc[1].metric("Медиана", f"₽{ba.get('median_budget_min', 0):,.0f}")
-        bc[2].metric("Мин", f"₽{ba.get('min_budget', 0):,.0f}")
-        bc[3].metric("Макс", f"₽{ba.get('max_budget', 0):,.0f}")
+        bc[0].metric("Средний", f"₽{(ba.get('average_budget_min') or 0):,.0f}")
+        bc[1].metric("Медиана", f"₽{(ba.get('median_budget_min') or 0):,.0f}")
+        bc[2].metric("Мин", f"₽{(ba.get('min_budget') or 0):,.0f}")
+        bc[3].metric("Макс", f"₽{(ba.get('max_budget') or 0):,.0f}")
 
     ca = stats.get("competition_analysis", {})
     if ca:
