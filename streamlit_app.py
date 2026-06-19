@@ -193,6 +193,8 @@ with st.sidebar:
         f["sources"] = set(src_filter)
 
         all_budgets = [t.get("budget_min") or 0 for t in st.session_state.tasks]
+        if not all_budgets:
+            all_budgets = [0, 500_000]
         bmin, bmax = min(all_budgets), max(all_budgets)
         if bmin == bmax:
             bmax = bmin + 100_000

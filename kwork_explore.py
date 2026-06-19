@@ -63,17 +63,14 @@ async def main():
         with open("/tmp/kwork_cat.html", "w") as f:
             f.write(html)
 
-        # Check what's on the page
         title = await page.title()
         print(f"\nCategory page /programmirovanie: title='{title}'")
 
         cards = await page.query_selector_all("div.want-card.want-card--list")
         print(f"Category cards: {len(cards)}")
 
-        # Check URL after navigation
         print(f"Final URL: {page.url}")
 
-        # 5) Check if there's a category selector/dropdown on the main page
         await page.goto(
             "https://kwork.ru/projects", wait_until="domcontentloaded", timeout=30000
         )
