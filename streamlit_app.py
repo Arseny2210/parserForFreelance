@@ -46,7 +46,7 @@ IT_CATEGORY_GROUPS: dict[str, list[str]] = {
 
 AVAILABLE_SOURCES = {"kwork": "Kwork", "fl": "FL.ru"}
 
-for key in ("tasks", "stats", "last_run", "latest_excel"):
+for key in ("tasks", "stats", "last_run", "latest_excel", "debug_log"):
     if key not in st.session_state:
         st.session_state[key] = None
 if "running" not in st.session_state:
@@ -70,7 +70,7 @@ def find_latest_excel():
 
 
 def reset_state():
-    for k in ("tasks", "stats", "last_run", "latest_excel"):
+    for k in ("tasks", "stats", "last_run", "latest_excel", "debug_log"):
         st.session_state[k] = None
     st.session_state.running = False
 
@@ -119,6 +119,8 @@ with st.sidebar:
         if st.checkbox(label, value=True, key=f"src_{key}", disabled=disabled):
             selected.append(key)
 
+    st.divider()
+
     if st.button(
         "🚀 Собрать данные", type="primary", use_container_width=True, disabled=disabled
     ):
@@ -128,6 +130,7 @@ with st.sidebar:
             st.session_state.running = True
             st.session_state.tasks = None
             st.session_state.stats = None
+            st.session_state.debug_log = []
             st.session_state.run_sources = selected
             st.rerun()
 
@@ -222,6 +225,7 @@ with st.sidebar:
 # ── Collection phase ──────────────────────────────────────────────
 if st.session_state.running:
     sources = st.session_state.get("run_sources", [])
+    debug = st.session_state.debug_log or []
 
     bar = st.progress(0, text="🚀 Подготовка...")
     status = st.status("Запуск сбора данных...", expanded=True)
@@ -229,8 +233,11 @@ if st.session_state.running:
     try:
         a = FreelanceMarketAnalyzer(scrapers_to_run=sources)
 
-        total_steps = len(sources) + 5
+        total_steps = 0
         step = 0
+
+        if sources:
+            total_steps = len(sources) + 5
 
         for src in sources:
             step += 1
@@ -238,38 +245,49 @@ if st.session_state.running:
             label_text = f"📥 {AVAILABLE_SOURCES.get(src, src)}..."
             bar.progress(pct, text=label_text)
             status.update(label=label_text, state="running")
-            collected = run_async(a.collect_source(src))
-            status.write(
-                f"✓ {len(collected)} задач с {AVAILABLE_SOURCES.get(src, src)}"
-            )
+            try:
+                collected = run_async(a.collect_source(src))
+                msg = f"✓ {len(collected)} задач с {AVAILABLE_SOURCES.get(src, src)}"
+                status.write(msg)
+                debug.append(f"[{src}] collected {len(collected)} tasks")
+            except Exception as e:
+                import traceback
+
+                tb = traceback.format_exc()
+                status.write(f"❌ {AVAILABLE_SOURCES.get(src, src)}: {e}")
+                debug.append(f"[{src}] ERROR: {e}")
+                debug.append(tb)
 
         if not a.tasks:
-            status.write(
-                "⚠️ Парсер не нашёл задач. Проверьте соединение и доступность бирж."
-            )
+            status.write("⚠️ Парсер не нашёл задач. Включите логи ниже для диагностики.")
 
         step += 1
-        bar.progress(62, text="🏷️ Классификация...")
+        pct = min(step / max(total_steps, 1) * 100, 95)
+        bar.progress(int(pct), text="🏷️ Классификация...")
         status.update(label="Классификация категорий...", state="running")
         a.normalize_categories()
+        debug.append(f"[analytics] normalized {len(a.tasks)} tasks")
 
         step += 1
-        bar.progress(70, text="🔧 Технологии...")
+        pct = min(step / max(total_steps, 1) * 100, 95)
+        bar.progress(int(pct), text="🔧 Технологии...")
         status.update(label="Извлечение технологий...", state="running")
         a.extract_technologies()
 
         step += 1
-        bar.progress(78, text="📊 Анализ...")
+        pct = min(step / max(total_steps, 1) * 100, 95)
+        bar.progress(int(pct), text="📊 Анализ...")
         status.update(label="Анализ данных...", state="running")
         a.run_analytics()
 
         step += 1
-        bar.progress(86, text="📝 Экспорт в Excel...")
+        pct = min(step / max(total_steps, 1) * 100, 95)
+        bar.progress(int(pct), text="📝 Экспорт в Excel...")
         status.update(label="Экспорт...", state="running")
         a.export_results()
 
         step += 1
-        bar.progress(94, text="📈 Графики...")
+        bar.progress(95, text="📈 Графики...")
         status.update(label="Генерация графиков...", state="running")
         a.generate_charts()
 
@@ -280,6 +298,7 @@ if st.session_state.running:
             expanded=False,
         )
 
+        st.session_state.debug_log = debug
         st.session_state.tasks = a.tasks
         st.session_state.stats = a.analytics
         st.session_state.last_run = datetime.now()
@@ -291,6 +310,9 @@ if st.session_state.running:
     except Exception as e:
         import traceback
 
+        debug.append(f"[fatal] {e}")
+        debug.append(traceback.format_exc())
+        st.session_state.debug_log = debug
         bar.empty()
         status.update(label=f"❌ Ошибка: {e}", state="error")
         st.code(traceback.format_exc())
@@ -306,12 +328,13 @@ if st.session_state.tasks is None:
 tasks = st.session_state.tasks
 stats = st.session_state.stats
 filters = st.session_state.filters
+debug_log = st.session_state.debug_log or []
 
 filtered_tasks = apply_filters(tasks, filters)
 it_tasks = [t for t in tasks if t.get("normalized_category", "OTHER") in IT_CATEGORIES]
 
-tab_overview, tab_tasks_tab, tab_charts, tab_excel = st.tabs(
-    ["📈 Обзор", "📋 Задачи", "📊 Графики", "⬇️ Экспорт"]
+tab_overview, tab_tasks_tab, tab_charts, tab_excel, tab_logs = st.tabs(
+    ["📈 Обзор", "📋 Задачи", "📊 Графики", "⬇️ Экспорт", "🔧 Логи"]
 )
 
 # ── Tab: Overview ─────────────────────────────────────────────────
@@ -474,3 +497,15 @@ with tab_excel:
         st.caption(f"Файл: {os.path.basename(p)}")
     else:
         st.info("Excel-файл не найден")
+
+# ── Tab: Logs ─────────────────────────────────────────────────────
+with tab_logs:
+    st.subheader("📋 Логи сбора данных")
+    if debug_log:
+        for line in debug_log:
+            st.code(line, language="", line_numbers=False)
+    else:
+        st.info("Логов нет")
+    st.caption(
+        "Эти логи помогут понять, почему данные пустые. Покажите их разработчику."
+    )
