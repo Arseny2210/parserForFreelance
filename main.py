@@ -80,6 +80,7 @@ class FreelanceMarketAnalyzer:
         self.scrapers_to_run = scrapers_to_run or settings.scrapers_enabled
         self.tasks: list[dict] = []
         self.analytics: dict = {}
+        self.active_sources: list[str] = []
         self.excel_exporter = ExcelExporter()
         self.chart_generator = ChartGenerator()
         self.budget_analyzer = BudgetAnalyzer()
@@ -96,28 +97,34 @@ class FreelanceMarketAnalyzer:
         self.active_sources: list[str] = []
 
         for scraper_name in self.scrapers_to_run:
-            if scraper_name not in SCRAPER_MAP:
-                logger.warning("Unknown scraper: {}, skipping", scraper_name)
-                continue
-
-            scraper_class = SCRAPER_MAP[scraper_name]
-            scraper = scraper_class()
-            try:
-                tasks = await scraper.collect()
-                all_tasks.extend(tasks)
-                if tasks:
-                    self.active_sources.append(scraper_name)
-                logger.info("Collected {} tasks from {}", len(tasks), scraper_name)
-            except Exception as e:
-                logger.error("Failed to collect tasks from {}: {}", scraper_name, e)
-            finally:
-                await scraper.close()
+            tasks = await self.collect_source(scraper_name)
+            all_tasks.extend(tasks)
 
         self.tasks = [t.to_dict() if isinstance(t, TaskData) else t for t in all_tasks]
         logger.info(
             "Total tasks collected: {} (from {})", len(self.tasks), self.active_sources
         )
         return self.tasks
+
+    async def collect_source(self, name: str) -> list[dict]:
+        if name not in SCRAPER_MAP:
+            logger.warning("Unknown scraper: {}, skipping", name)
+            return []
+        scraper_class = SCRAPER_MAP[name]
+        scraper = scraper_class()
+        try:
+            tasks = await scraper.collect()
+            if tasks:
+                self.active_sources.append(name)
+            logger.info("Collected {} tasks from {}", len(tasks), name)
+            result = [t.to_dict() if isinstance(t, TaskData) else t for t in tasks]
+            self.tasks.extend(result)
+            return result
+        except Exception as e:
+            logger.error("Failed to collect tasks from {}: {}", name, e)
+            return []
+        finally:
+            await scraper.close()
 
     def normalize_categories(self) -> None:
         for task in self.tasks:

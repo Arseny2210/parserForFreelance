@@ -1,63 +1,90 @@
 # Freelance Market Analyzer
 
-Production-ready система сбора и анализа IT-заказов с фриланс-бирж с полной аналитикой, Excel-отчётом и графиками.
-
-По умолчанию работает в **демо-режиме** — генерирует 440+ реалистичных IT-задач, сгруппированных по 11 категориям, для демонстрации полной цепочки аналитики.
+Сбор и анализ IT-заказов с фриланс-бирж. Веб-интерфейс (Streamlit), Excel-отчёты, графики, NLP-классификация по 35+ категориям.
 
 ## Быстрый старт
 
 ```bash
-# 1. Установить зависимости
 pip install -r requirements.txt
-
-# 2. Запустить в демо-режиме (по умолчанию)
-python3 main.py
-
-# Или с явным указанием демо-режима:
-python3 main.py
-
-# Живой сбор с фриланс-бирж (требуются Playwright браузеры):
-python3 main.py --live
+playwright install chromium
+streamlit run streamlit_app.py
 ```
+
+Откройте `http://localhost:8501` в браузере.
 
 ## Режимы работы
 
-| Режим | Команда | Описание |
-|-------|---------|----------|
-| **Демо (по умолчанию)** | `python3 main.py` | Генерирует 440+ IT-задач в 11 категориях. Не требует БД, браузеров, интернета |
-| Живой сбор | `python3 main.py --live` | Парсит Upwork, Freelancer, Guru, FL.ru, Kwork, Freelancehunt |
+### Веб-интерфейс (Streamlit) — основной
+
+```bash
+streamlit run streamlit_app.py
+```
+
+- Выбор источников: Kwork, FL.ru (чекбоксы в сайдбаре)
+- Прогресс-бар с детальными шагами и статусами
+- Фильтры: IT-категории (групповые чекбоксы), источник, диапазон бюджета
+- Поиск по названию задачи во вкладке «📋 Задачи»
+- Вкладки: «📈 Обзор» (метрики + графики), «📋 Задачи» (таблица), «📊 Графики» (PNG), «⬇️ Экспорт» (Excel)
+- Кнопка «✕ Сбросить» для очистки данных
+
+### CLI (живой сбор)
+
+```bash
+python3 main.py --scrapers fl kwork
+```
+
+### CLI (демо-данные)
+
+```bash
+python3 main.py --demo
+```
+
+Генерирует 440+ реалистичных IT-задач в 35 категориях без парсинга.
+
+## Фильтры
+
+### В сайдбаре
+
+| Фильтр | Описание |
+|--------|----------|
+| **Только IT / Design** | Показывать только IT-задачи |
+| **IT-категории** | 11 групп: Frontend/UI, Backend, CMS, Боты, AI/ML, Парсинг/Автоматизация, Mobile, DevOps/QA, Data, Design/Marketing, Fullstack |
+| **Выбрать все / Снять все** | Быстрое управление IT-категориями |
+| **Источник** | Multiselect: Kwork, FL.ru |
+| **Бюджет от — до** | Слайдер диапазона |
+
+### Во вкладке «📋 Задачи»
+
+| Фильтр | Описание |
+|--------|----------|
+| **🔍 Поиск по названию** | Фильтрация по тексту в названии задачи |
 
 ## Архитектура
 
 ```
 project/
-├── scrapers/           # Парсеры площадок (для --live режима)
-│   ├── base.py         # BaseScraper (ABC)
-│   ├── upwork.py
-│   ├── freelancer.py
-│   ├── guru.py
-│   ├── fl.py
-│   ├── kwork.py
-│   └── freelancehunt.py
-├── core/               # Ядро
-│   ├── models.py       # SQLAlchemy models
-│   ├── database.py     # Подключение к БД
-│   ├── settings.py     # Pydantic settings
-│   └── logger.py       # Loguru конфигурация
-├── analytics/          # Аналитика
-│   ├── categories.py   # NLP классификация (36 категорий)
-│   ├── technologies.py # Извлечение 70+ технологий
-│   ├── budgets.py      # Анализ бюджетов
-│   ├── competition.py  # Анализ конкуренции
-│   └── trends.py       # Анализ трендов
-├── export/             # Экспорт
-│   └── excel_export.py # Excel-отчёт (10 листов, русские названия)
-├── reports/            # Визуализация
-│   └── charts.py       # 8 matplotlib графиков
-├── main.py             # Оркестратор
-├── docker-compose.yml
-├── Dockerfile
-└── requirements.txt
+├── streamlit_app.py          # Веб-интерфейс (Streamlit)
+├── main.py                   # Оркестратор FreelanceMarketAnalyzer
+├── scrapers/                 # Парсеры бирж
+│   ├── base.py               # BaseScraper (ABC)
+│   ├── kwork.py              # Kwork (Playwright, stealth)
+│   └── fl.py                 # FL.ru (Playwright, headless=new)
+├── analytics/                # Аналитика
+│   ├── categories.py         # NLP-классификация (35+ категорий, regex)
+│   ├── technologies.py       # Извлечение 70+ технологий
+│   ├── budgets.py            # Анализ бюджетов
+│   ├── competition.py        # Анализ конкуренции
+│   └── trends.py             # Анализ трендов
+├── export/
+│   └── excel_export.py       # Excel-отчёт (10 листов, русские названия)
+├── reports/
+│   └── charts.py             # 8 matplotlib графиков
+├── core/
+│   ├── settings.py           # Pydantic-конфигурация
+│   └── logger.py             # Loguru
+├── requirements.txt
+├── AGENTS.md                 # Шпаргалка команд
+└── tests/                    # Pytest тесты
 ```
 
 ## Результаты
@@ -66,69 +93,80 @@ project/
 
 | Лист | Содержимое |
 |------|-----------|
-| Общая аналитика рынка | Сводка: статистика, распределение категорий, бюджеты, конкуренция, выводы |
-| IT-задачи | Все задачи, отфильтрованные по IT, сгруппированные по категориям |
+| Общая аналитика рынка | Сводка: статистика, бюджеты, конкуренция, выводы |
+| IT-задачи | Все IT-задачи, сгруппированные по категориям |
 | Топ категорий | Распределение по категориям |
 | Топ технологий | Топ технологий |
 | Средний бюджет | Средние бюджеты по категориям |
 | Медианный бюджет | Медианные бюджеты |
-| Конкуренция | Конкуренция (среднее число откликов) |
+| Конкуренция | Среднее число откликов |
 | Быстрорастущие категории | Самые быстрорастущие категории |
 | Самые дорогие категории | Самые дорогие категории |
 | Примеры задач | Примеры задач по категориям |
 
 ### Графики (`reports/charts/*.png`)
 
-- `category_distribution.png` — распределение категорий
-- `budgets_by_category.png` — бюджеты по категориям
-- `tasks_by_source.png` — количество задач по площадкам
-- `publication_timeline.png` — динамика публикаций
-- `technology_distribution.png` — распределение технологий
-- `budget_histogram.png` — гистограмма бюджетов
-- `competition_heatmap.png` — конкуренция vs бюджет
-- `category_vs_budget.png` — категории vs бюджет
+| Файл | Описание |
+|------|----------|
+| `category_distribution.png` | Распределение категорий |
+| `budgets_by_category.png` | Бюджеты по категориям |
+| `tasks_by_source.png` | Задачи по площадкам |
+| `publication_timeline.png` | Динамика публикаций |
+| `technology_distribution.png` | Распределение технологий |
+| `budget_histogram.png` | Гистограмма бюджетов |
+| `competition_heatmap.png` | Конкуренция vs бюджет |
+| `category_vs_budget.png` | Категории vs бюджет |
 
 ## Категории (NLP-классификация)
 
-Система автоматически классифицирует задачи в 36 категорий на основе названия и описания с использованием регулярных выражений и ключевых слов (включая русские):
+Система автоматически классифицирует задачи в 35+ категорий на основе названия и описания (регулярные выражения, русские и английские ключевые слова):
 
-WordPress, Tilda, Shopify, Frontend, React, Next.js, Backend, FastAPI, Django, Laravel, Fullstack, Telegram Bots, Discord Bots, AI Chatbots, AI Agents, RAG, OpenAI Integration, Claude Integration, Web Scraping, Parsing, Automation, n8n, Make, Zapier, Mobile Apps, Flutter, React Native, Android, iOS, DevOps, Docker, Kubernetes, QA, Data Analytics, Power BI, SQL, Machine Learning, Computer Vision, OTHER.
+**Frontend:** Frontend, React, Next.js
+**Backend:** Backend, FastAPI, Django, Laravel, C# / .NET
+**CMS:** WordPress, Tilda, Shopify
+**Боты:** Telegram Bots, Discord Bots
+**AI/ML:** AI Chatbots, AI Agents, RAG, OpenAI Integration, Claude Integration, Machine Learning, Computer Vision
+**Парсинг/Автоматизация:** Web Scraping, Parsing, Automation, n8n, Make, Zapier
+**Mobile:** Mobile Apps, Flutter, React Native, Android, iOS
+**DevOps/QA:** DevOps, Docker, Kubernetes, QA
+**Data:** Data Analytics, Power BI, SQL
+**Design/Marketing:** Design, Marketing
+**Прочее:** Fullstack, OTHER (не IT)
 
-## Разработка
+## Установка
 
 ```bash
-# Установка зависимостей для разработки
-pip install -r requirements-dev.txt
+# Зависимости
+pip install -r requirements.txt
 
-# Линтинг
-ruff check .
-
-# Type checking
-mypy .
-
-# Тесты
-pytest -v --tb=short
-
-# Полная проверка
-ruff check . && mypy . && pytest -v --tb=short
+# Браузер для Playwright
+playwright install chromium
 ```
 
-## Дополнительно
+## Тесты
 
-- **Демо-данные** используют seed 42 для воспроизводимости
-- **Excel-отчёт** содержит фильтрацию только IT-задач, русские названия листов и колонок, цветовое кодирование
-- **8 графиков** сохраняются в `reports/charts/`
-- **Graceful degradation** — система работает без БД (используется только для `--live` режима с PostgreSQL)
+```bash
+python3 -m pytest tests/ -v
+```
 
-## Переменные окружения
+## Переменные окружения (`.env`)
 
-| Переменная | Значение по умолчанию | Описание |
-|-----------|----------------------|----------|
-| DATABASE_URL | postgresql+asyncpg://postgres:postgres@localhost:5432/freelance_market | Async connection |
-| DATABASE_URL_SYNC | postgresql://postgres:postgres@localhost:5432/freelance_market | Sync connection |
-| LOG_LEVEL | DEBUG | Уровень логирования |
-| PROXY_ENABLED | false | Включить прокси |
-| PROXY_URL | - | URL прокси |
-| REQUEST_TIMEOUT | 30 | Таймаут запроса (сек) |
-| MAX_RETRIES | 5 | Максимум повторов |
-| THROTTLE_DELAY | 1.0 | Задержка между запросами |
+| Переменная | По умолчанию | Описание |
+|-----------|-------------|----------|
+| `LOG_LEVEL` | `DEBUG` | Уровень логирования |
+| `PROXY_ENABLED` | `false` | Включить прокси |
+| `PROXY_URL` | — | URL прокси |
+| `REQUEST_TIMEOUT` | `30` | Таймаут запроса (сек) |
+| `MAX_RETRIES` | `5` | Максимум повторов |
+| `THROTTLE_DELAY` | `1.0` | Задержка между запросами |
+
+## Технологии
+
+- **Streamlit** — веб-интерфейс
+- **Playwright** — headless Chrome для парсинга
+- **Pandas** — обработка данных
+- **OpenPyXL** — Excel-отчёты
+- **Matplotlib + Seaborn** — графики
+- **Pydantic** — конфигурация
+- **Loguru** — логирование
+- **Pytest** — тесты
