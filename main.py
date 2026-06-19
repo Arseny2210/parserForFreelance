@@ -97,8 +97,11 @@ class FreelanceMarketAnalyzer:
         self.active_sources: list[str] = []
 
         for scraper_name in self.scrapers_to_run:
-            tasks = await self.collect_source(scraper_name)
-            all_tasks.extend(tasks)
+            try:
+                tasks = await self.collect_source(scraper_name)
+                all_tasks.extend(tasks)
+            except Exception as e:
+                logger.error("Failed to collect from {}: {}", scraper_name, e)
 
         self.tasks = [t.to_dict() if isinstance(t, TaskData) else t for t in all_tasks]
         logger.info(
@@ -120,9 +123,6 @@ class FreelanceMarketAnalyzer:
             result = [t.to_dict() if isinstance(t, TaskData) else t for t in tasks]
             self.tasks.extend(result)
             return result
-        except Exception as e:
-            logger.error("Failed to collect tasks from {}: {}", name, e)
-            return []
         finally:
             await scraper.close()
 

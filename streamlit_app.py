@@ -235,6 +235,7 @@ if st.session_state.running:
 
         total_steps = 0
         step = 0
+        source_errors = []
 
         if sources:
             total_steps = len(sources) + 5
@@ -253,13 +254,26 @@ if st.session_state.running:
             except Exception as e:
                 import traceback
 
+                source_errors.append(src)
                 tb = traceback.format_exc()
                 status.write(f"❌ {AVAILABLE_SOURCES.get(src, src)}: {e}")
                 debug.append(f"[{src}] ERROR: {e}")
                 debug.append(tb)
 
+        if source_errors:
+            failed = ", ".join(AVAILABLE_SOURCES.get(s, s) for s in source_errors)
+            status.write(f"⚠️ Ошибки сбора: {failed}. Логи — во вкладке «🔧 Логи»")
+
         if not a.tasks:
-            status.write("⚠️ Парсер не нашёл задач. Включите логи ниже для диагностики.")
+            status.write("⚠️ Парсер не нашёл задач. Логи — во вкладке «🔧 Логи».")
+            bar.progress(100, text="⚠️ Нет данных")
+            status.update(label="⚠️ Сбор завершён, задач нет", state="error")
+            st.session_state.debug_log = debug
+            st.session_state.tasks = []
+            st.session_state.stats = {}
+            st.session_state.last_run = datetime.now()
+            st.session_state.running = False
+            st.rerun()
 
         step += 1
         pct = min(step / max(total_steps, 1) * 100, 95)

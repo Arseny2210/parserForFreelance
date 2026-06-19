@@ -22,4 +22,4 @@ COPY . .
 
 RUN mkdir -p logs exports reports/charts
 
-CMD ["python", "main.py"]
+CMD ["streamlit", "run", "streamlit_app.py", "--server.port=10000", "--server.address=0.0.0.0"]
