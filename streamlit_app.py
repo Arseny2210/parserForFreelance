@@ -364,7 +364,8 @@ with tab_overview:
     if ca:
         st.subheader("Конкуренция")
         st.metric(
-            "Среднее число откликов", f"{ca.get('overall_average_proposals', 0):.1f}"
+            "Среднее число откликов",
+            f"{(ca.get('overall_average_proposals') or 0):.1f}",
         )
 
     st.caption(
