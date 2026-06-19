@@ -244,15 +244,9 @@ if st.session_state.running:
             )
 
         if not a.tasks:
-            bar.progress(
-                50, text="🔄 Парсер не дал результатов — генерация demo-данных..."
+            status.write(
+                "⚠️ Парсер не нашёл задач. Проверьте соединение и доступность бирж."
             )
-            status.update(
-                label="Парсер не дал результатов — генерация demo-данных...",
-                state="running",
-            )
-            run_async(a.run_with_demo())
-            status.write(f"✓ Сгенерировано {len(a.tasks)} demo-задач")
 
         step += 1
         bar.progress(62, text="🏷️ Классификация...")
