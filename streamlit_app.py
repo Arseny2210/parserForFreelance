@@ -56,8 +56,8 @@ if "filters" not in st.session_state:
         "it_only": True,
         "selected_it_cats": set(IT_CATEGORIES),
         "sources": set(),
-        "budget_min": 0,
-        "budget_max": 5_000_000,
+        "budget_min": None,
+        "budget_max": None,
     }
 
 
@@ -69,10 +69,25 @@ def find_latest_excel():
     return files[-1] if files else None
 
 
+def reset_filters():
+    st.session_state.filters = {
+        "it_only": True,
+        "selected_it_cats": set(IT_CATEGORIES),
+        "sources": set(),
+        "budget_min": None,
+        "budget_max": None,
+    }
+
+
 def reset_state():
     for k in ("tasks", "stats", "last_run", "latest_excel", "debug_log"):
         st.session_state[k] = None
     st.session_state.running = False
+    reset_filters()
+
+
+def clamp(val, lo, hi):
+    return max(lo, min(val, hi))
 
 
 def run_async(coro_or_result):
@@ -92,7 +107,6 @@ def apply_filters(tasks: list[dict], filters: dict) -> list[dict]:
     for t in tasks:
         cat = t.get("normalized_category", "OTHER")
         src = t.get("source", "")
-        budget = t.get("budget_min") or 0
 
         if f["it_only"] and cat not in IT_CATEGORIES:
             continue
@@ -100,8 +114,20 @@ def apply_filters(tasks: list[dict], filters: dict) -> list[dict]:
             continue
         if f["sources"] and src not in f["sources"]:
             continue
-        if budget < f["budget_min"] or budget > f["budget_max"]:
-            continue
+
+        bmin = f.get("budget_min")
+        bmax = f.get("budget_max")
+        if bmin is not None or bmax is not None:
+            t_min = t.get("budget_min")
+            t_max = t.get("budget_max")
+            if t_min is None and t_max is None:
+                continue
+            t_lo = t_min if t_min is not None else t_max
+            t_hi = t_max if t_max is not None else t_min
+            if bmin is not None and t_hi < bmin:
+                continue
+            if bmax is not None and t_lo > bmax:
+                continue
 
         filtered.append(t)
     return filtered
@@ -132,6 +158,7 @@ with st.sidebar:
             st.session_state.stats = None
             st.session_state.debug_log = []
             st.session_state.run_sources = selected
+            reset_filters()
             st.rerun()
 
     if st.session_state.running:
@@ -195,17 +222,25 @@ with st.sidebar:
         )
         f["sources"] = set(src_filter)
 
-        all_budgets = [t.get("budget_min") or 0 for t in st.session_state.tasks]
+        all_budgets = [
+            t.get("budget_min") or t.get("budget_max") or 0
+            for t in st.session_state.tasks
+        ]
         if not all_budgets:
             all_budgets = [0, 500_000]
         bmin, bmax = min(all_budgets), max(all_budgets)
         if bmin == bmax:
             bmax = bmin + 100_000
+        default_min = f["budget_min"] if f["budget_min"] is not None else int(bmin)
+        default_max = f["budget_max"] if f["budget_max"] is not None else int(bmax)
         b_range = st.slider(
             "Бюджет от — до (₽)",
             min_value=int(bmin),
             max_value=int(bmax),
-            value=(int(f["budget_min"]), int(f["budget_max"])),
+            value=(
+                int(clamp(default_min, bmin, bmax)),
+                int(clamp(default_max, bmin, bmax)),
+            ),
             key="f_budget",
         )
         f["budget_min"], f["budget_max"] = b_range
