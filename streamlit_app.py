@@ -1,8 +1,9 @@
 import sys
+import json
 import asyncio
 import os
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timedelta
 from collections import Counter
 
 import streamlit as st
@@ -14,6 +15,21 @@ from main import FreelanceMarketAnalyzer
 from export.excel_export import RUSSIAN_CATEGORIES, IT_CATEGORIES
 
 st.set_page_config(page_title="Freelance Market Analyzer", layout="wide")
+
+st.markdown(
+    """
+<style>
+[data-testid="stSidebar"] { min-width: 320px; max-width: 320px; }
+.stProgress > div > div > div > div { background-color: #00cc66; }
+div[data-testid="stMetric"] { background: #f0f2f6; border-radius: 8px; padding: 8px; }
+div[data-testid="stMetric"] > div:first-child { font-size: 14px; color: #555; }
+div[data-testid="stMetric"] > div:nth-child(2) { font-size: 24px; font-weight: 700; }
+.tasks-header { display: flex; justify-content: space-between; align-items: center; }
+.cache-badge { font-size: 12px; color: #888; padding: 4px 10px; border-radius: 12px; background: #e8f0fe; }
+</style>
+""",
+    unsafe_allow_html=True,
+)
 
 IT_CATEGORY_GROUPS: dict[str, list[str]] = {
     "Frontend / UI": ["Frontend", "React", "Next.js"],
@@ -45,38 +61,51 @@ IT_CATEGORY_GROUPS: dict[str, list[str]] = {
 }
 
 AVAILABLE_SOURCES = {"kwork": "Kwork", "fl": "FL.ru"}
+CACHE_FILE = Path("exports/cache.json")
+
+
+def save_cache(tasks: list[dict], stats: dict):
+    cache = {
+        "collected_at": datetime.now().isoformat(),
+        "tasks": tasks,
+        "stats": stats,
+    }
+    CACHE_FILE.parent.mkdir(parents=True, exist_ok=True)
+    CACHE_FILE.write_text(json.dumps(cache, default=str, ensure_ascii=False, indent=2))
+
+
+def load_cache() -> dict | None:
+    if not CACHE_FILE.exists():
+        return None
+    try:
+        data = json.loads(CACHE_FILE.read_text())
+        for t in data.get("tasks", []):
+            if isinstance(t.get("posted_at"), str):
+                t["posted_at"] = datetime.fromisoformat(t["posted_at"])
+        return data
+    except Exception:
+        return None
+
 
 for key in ("tasks", "stats", "last_run", "latest_excel", "debug_log"):
     if key not in st.session_state:
         st.session_state[key] = None
 if "running" not in st.session_state:
     st.session_state.running = False
-if "filters" not in st.session_state:
-    st.session_state.filters = {
-        "it_only": True,
-        "selected_it_cats": set(IT_CATEGORIES),
-        "sources": set(),
-        "budget_min": None,
-        "budget_max": None,
-    }
-
-
-def find_latest_excel():
-    p = Path("exports")
-    if not p.exists():
-        return None
-    files = sorted(p.glob("*.xlsx"), key=os.path.getmtime)
-    return files[-1] if files else None
 
 
 def reset_filters():
-    st.session_state.filters = {
+    st.session_state["filters"] = {
         "it_only": True,
         "selected_it_cats": set(IT_CATEGORIES),
         "sources": set(),
         "budget_min": None,
         "budget_max": None,
     }
+
+
+if "filters" not in st.session_state:
+    reset_filters()
 
 
 def reset_state():
@@ -99,6 +128,14 @@ def run_async(coro_or_result):
         return loop.run_until_complete(coro_or_result)
     finally:
         loop.close()
+
+
+def find_latest_excel():
+    p = Path("exports")
+    if not p.exists():
+        return None
+    files = sorted(p.glob("*.xlsx"), key=os.path.getmtime)
+    return files[-1] if files else None
 
 
 def apply_filters(tasks: list[dict], filters: dict) -> list[dict]:
@@ -133,6 +170,15 @@ def apply_filters(tasks: list[dict], filters: dict) -> list[dict]:
     return filtered
 
 
+# ── Auto-load cache ──────────────────────────────────────────────
+if st.session_state.tasks is None and not st.session_state.running:
+    cached = load_cache()
+    if cached:
+        st.session_state.tasks = cached["tasks"]
+        st.session_state.stats = cached["stats"]
+        st.session_state.last_run = datetime.fromisoformat(cached["collected_at"])
+
+
 # ── Sidebar ──────────────────────────────────────────────────────
 with st.sidebar:
     disabled = st.session_state.running
@@ -147,9 +193,18 @@ with st.sidebar:
 
     st.divider()
 
-    if st.button(
-        "🚀 Собрать данные", type="primary", use_container_width=True, disabled=disabled
-    ):
+    col1, col2 = st.columns(2)
+    with col1:
+        collect_btn = st.button(
+            "🚀 Собрать", type="primary", use_container_width=True, disabled=disabled
+        )
+    with col2:
+        if has_data and not disabled:
+            if st.button("✕ Сбросить", use_container_width=True):
+                reset_state()
+                st.rerun()
+
+    if collect_btn:
         if not selected:
             st.warning("Выберите хотя бы один источник")
         else:
@@ -163,10 +218,6 @@ with st.sidebar:
 
     if st.session_state.running:
         st.button("⏳ Идёт сбор...", disabled=True, use_container_width=True)
-    elif has_data:
-        if st.button("✕ Сбросить", use_container_width=True):
-            reset_state()
-            st.rerun()
 
     if has_data:
         st.divider()
@@ -248,9 +299,16 @@ with st.sidebar:
     if st.session_state.last_run:
         st.divider()
         dt = st.session_state.last_run
-        st.caption(f"Последний сбор: {dt.strftime('%d.%m.%Y %H:%M')}")
         n = len(st.session_state.tasks or [])
-        st.caption(f"Всего задач: {n}")
+        age = datetime.now() - dt
+        if age.total_seconds() < 60:
+            age_str = "только что"
+        elif age.total_seconds() < 3600:
+            age_str = f"{int(age.total_seconds() // 60)} мин назад"
+        else:
+            age_str = f"{int(age.total_seconds() // 3600)} ч назад"
+        st.caption(f"📅 {dt.strftime('%d.%m.%Y %H:%M')} · {age_str}")
+        st.caption(f"📋 {n} задач")
 
     if has_data:
         st.divider()
@@ -297,10 +355,10 @@ if st.session_state.running:
 
         if source_errors:
             failed = ", ".join(AVAILABLE_SOURCES.get(s, s) for s in source_errors)
-            status.write(f"⚠️ Ошибки сбора: {failed}. Логи — во вкладке «🔧 Логи»")
+            status.write(f"⚠️ Ошибки сбора: {failed}")
 
         if not a.tasks:
-            status.write("⚠️ Парсер не нашёл задач. Логи — во вкладке «🔧 Логи».")
+            status.write("⚠️ Парсер не нашёл задач.")
             bar.progress(100, text="⚠️ Нет данных")
             status.update(label="⚠️ Сбор завершён, задач нет", state="error")
             st.session_state.debug_log = debug
@@ -308,6 +366,7 @@ if st.session_state.running:
             st.session_state.stats = {}
             st.session_state.last_run = datetime.now()
             st.session_state.running = False
+            save_cache([], {})
             st.rerun()
 
         step += 1
@@ -331,7 +390,7 @@ if st.session_state.running:
 
         step += 1
         pct = min(step / max(total_steps, 1) * 100, 95)
-        bar.progress(int(pct), text="📝 Экспорт в Excel...")
+        bar.progress(int(pct), text="📝 Экспорт...")
         status.update(label="Экспорт...", state="running")
         a.export_results()
 
@@ -352,8 +411,9 @@ if st.session_state.running:
         st.session_state.stats = a.analytics
         st.session_state.last_run = datetime.now()
         st.session_state.latest_excel = find_latest_excel()
-
         st.session_state.running = False
+
+        save_cache(a.tasks, a.analytics)
         st.rerun()
 
     except Exception as e:
@@ -371,8 +431,15 @@ if st.session_state.running:
 
 # ── Main content ─────────────────────────────────────────────────
 if st.session_state.tasks is None:
-    st.info("Нажмите **🚀 Собрать данные** в боковой панели.")
-    st.stop()
+    cached = load_cache()
+    if cached:
+        st.session_state.tasks = cached["tasks"]
+        st.session_state.stats = cached["stats"]
+        st.session_state.last_run = datetime.fromisoformat(cached["collected_at"])
+        st.rerun()
+    else:
+        st.info("👋 Нажмите **🚀 Собрать** в боковой панели, чтобы начать.")
+        st.stop()
 
 tasks = st.session_state.tasks
 stats = st.session_state.stats
@@ -381,6 +448,27 @@ debug_log = st.session_state.debug_log or []
 
 filtered_tasks = apply_filters(tasks, filters)
 it_tasks = [t for t in tasks if t.get("normalized_category", "OTHER") in IT_CATEGORIES]
+
+# ── Header ────────────────────────────────────────────────────────
+col_title, col_cache = st.columns([3, 1])
+with col_title:
+    st.header("📊 Freelance Market Analyzer")
+with col_cache:
+    if st.session_state.last_run:
+        dt = st.session_state.last_run
+        cache_age = datetime.now() - dt
+        if cache_age.total_seconds() < 60:
+            age_str = "только что"
+        elif cache_age.total_seconds() < 3600:
+            age_str = f"{int(cache_age.total_seconds() // 60)} мин назад"
+        else:
+            age_str = f"{int(cache_age.total_seconds() // 3600)} ч назад"
+        st.markdown(
+            f"<div class='cache-badge'>📦 {dt.strftime('%d.%m.%Y %H:%M')} · {age_str}</div>",
+            unsafe_allow_html=True,
+        )
+        if cache_age > timedelta(hours=1):
+            st.warning("⚠️ Данные старше 1 часа. Нажмите «Собрать» для обновления.")
 
 tab_overview, tab_tasks_tab, tab_charts, tab_excel, tab_logs = st.tabs(
     ["📈 Обзор", "📋 Задачи", "📊 Графики", "⬇️ Экспорт", "🔧 Логи"]
@@ -396,10 +484,16 @@ with tab_overview:
         f"{len(it_tasks) / max(len(tasks), 1) * 100:.0f}%",
     )
     cols[2].metric("Не IT", len(tasks) - len(it_tasks))
-    cols[3].metric("Категорий", len(stats.get("category_counts", {})))
-    cols[4].metric("Технологий", len(stats.get("technology_counts", {})))
+    cols[3].metric(
+        "Категорий",
+        len(stats.get("category_counts", {})) if stats else 0,
+    )
+    cols[4].metric(
+        "Технологий",
+        len(stats.get("technology_counts", {})) if stats else 0,
+    )
 
-    cat_counts = stats.get("category_counts", {})
+    cat_counts = stats.get("category_counts", {}) if stats else {}
     it_counts = {k: v for k, v in cat_counts.items() if k in IT_CATEGORIES}
 
     col_left, col_right = st.columns(2)
@@ -428,25 +522,26 @@ with tab_overview:
             ).sort_values("Задач", ascending=False)
             st.bar_chart(df_src.set_index("Источник"))
 
-    ba = stats.get("budget_analysis", {})
+    ba = stats.get("budget_analysis", {}) if stats else {}
     if ba:
-        st.subheader("Бюджет")
+        st.subheader("💰 Бюджет")
         bc = st.columns(4)
         bc[0].metric("Средний", f"₽{(ba.get('average_budget_min') or 0):,.0f}")
         bc[1].metric("Медиана", f"₽{(ba.get('median_budget_min') or 0):,.0f}")
         bc[2].metric("Мин", f"₽{(ba.get('min_budget') or 0):,.0f}")
         bc[3].metric("Макс", f"₽{(ba.get('max_budget') or 0):,.0f}")
 
-    ca = stats.get("competition_analysis", {})
+    ca = stats.get("competition_analysis", {}) if stats else {}
     if ca:
-        st.subheader("Конкуренция")
+        st.subheader("🏆 Конкуренция")
         st.metric(
             "Среднее число откликов",
             f"{(ca.get('overall_average_proposals') or 0):.1f}",
         )
 
     st.caption(
-        f"Показано: {len(filtered_tasks)} задач из {len(tasks)} (после фильтров: {len(apply_filters(tasks, filters))})"
+        f"Показано: {len(filtered_tasks)} из {len(tasks)} задач"
+        f" (после фильтров: {len(apply_filters(tasks, filters))})"
     )
 
 # ── Tab: Tasks ────────────────────────────────────────────────────
@@ -529,6 +624,8 @@ with tab_charts:
                         caption=titles.get(f.stem, f.stem),
                         use_container_width=True,
                     )
+        else:
+            st.info("📭 Графики будут сгенерированы после сбора данных.")
 
 # ── Tab: Export ───────────────────────────────────────────────────
 with tab_excel:
@@ -545,16 +642,13 @@ with tab_excel:
             )
         st.caption(f"Файл: {os.path.basename(p)}")
     else:
-        st.info("Excel-файл не найден")
+        st.info("Excel-файл не найден. Соберите данные для генерации.")
 
 # ── Tab: Logs ─────────────────────────────────────────────────────
 with tab_logs:
-    st.subheader("📋 Логи сбора данных")
+    st.subheader("📋 Логи сбора")
     if debug_log:
         for line in debug_log:
             st.code(line, language="", line_numbers=False)
     else:
         st.info("Логов нет")
-    st.caption(
-        "Эти логи помогут понять, почему данные пустые. Покажите их разработчику."
-    )
