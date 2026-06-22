@@ -24,7 +24,11 @@ class FLScraper(BaseScraper):
         async with async_playwright() as p:
             browser = await p.chromium.launch(
                 headless=True,
-                args=["--no-sandbox", "--disable-gpu"],
+                args=[
+                    "--disable-blink-features=AutomationControlled",
+                    "--no-sandbox",
+                    "--disable-gpu",
+                ],
             )
             context = await browser.new_context(
                 user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
@@ -32,6 +36,13 @@ class FLScraper(BaseScraper):
             )
 
             page = await context.new_page()
+            try:
+                from playwright_stealth import Stealth
+
+                stealth = Stealth()
+                await stealth.apply_stealth_async(page)
+            except Exception:
+                pass
 
             for page_num in range(1, self.max_pages + 1):
                 try:
@@ -41,24 +52,32 @@ class FLScraper(BaseScraper):
                         url = f"{self.search_url}page-{page_num}/"
 
                     await page.goto(url, wait_until="load", timeout=60000)
-                    await page.wait_for_timeout(12000)
+                    await page.wait_for_timeout(5000)
 
-                    await page.evaluate(
-                        "window.scrollTo(0, document.body.scrollHeight)"
+                    title = await page.title()
+                    current_url = page.url
+                    logger.debug(
+                        "FL.ru page {} title: {} url: {}", page_num, title, current_url
                     )
-                    await page.wait_for_timeout(3000)
-                    await page.evaluate("window.scrollTo(0, 0)")
-                    await page.wait_for_timeout(2000)
 
                     try:
-                        await page.wait_for_selector("div.b-post", timeout=10000)
+                        await page.wait_for_selector("div.b-post", timeout=15000)
                     except Exception:
-                        pass
+                        logger.warning(
+                            "FL.ru page {}: no div.b-post after wait", page_num
+                        )
+
                     cards = await page.query_selector_all("div.b-post")
                     card_count = len(cards)
                     logger.debug("FL.ru page {}: found {} cards", page_num, card_count)
 
                     if card_count == 0:
+                        body_text = await page.evaluate(
+                            "document.body.innerText.substring(0, 500)"
+                        )
+                        logger.debug(
+                            "FL.ru page {} body: {}", page_num, body_text[:200]
+                        )
                         logger.warning("No cards on FL.ru page {}, stopping", page_num)
                         break
 
@@ -94,6 +113,14 @@ class FLScraper(BaseScraper):
                 "h2.b-post__title a[href*='/projects/']"
             )
             if not title_el:
+                title_el = await card.query_selector("h2.b-post__title a")
+            if not title_el:
+                title_el = await card.query_selector(
+                    ".b-post__title a[href*='/projects/']"
+                )
+            if not title_el:
+                title_el = await card.query_selector(".b-post__title a")
+            if not title_el:
                 return None
 
             title = (await title_el.inner_text()).strip()
@@ -103,18 +130,22 @@ class FLScraper(BaseScraper):
             id_match = re.search(r"/projects/(\d+)", href)
             job_id = id_match.group(1) if id_match else str(hash(href))
 
-            desc_el = await card.query_selector(
-                "div.b-post__body div.b-post__txt.text-5"
-            )
+            desc_el = await card.query_selector("div.b-post__txt.text-5")
+            if not desc_el:
+                desc_el = await card.query_selector(".b-post__txt")
             description = (await desc_el.inner_text()).strip() if desc_el else None
 
             price_el = await card.query_selector("div.b-post__price span.text-4")
+            if not price_el:
+                price_el = await card.query_selector(".b-post__price")
             budget_min, budget_max = None, None
             if price_el:
                 price_text = (await price_el.inner_text()).strip()
                 budget_min, budget_max = self._parse_fl_price(price_text)
 
             date_el = await card.query_selector("span.text-gray-opacity-4.text-7")
+            if not date_el:
+                date_el = await card.query_selector("[class*='text-gray']")
             posted_at = datetime.now(timezone.utc).replace(tzinfo=None)
             if date_el:
                 date_text = (await date_el.inner_text()).strip()
@@ -123,6 +154,8 @@ class FLScraper(BaseScraper):
             proposals_el = await card.query_selector(
                 "span[data-id='fl-view-count-href']"
             )
+            if not proposals_el:
+                proposals_el = await card.query_selector("[class*='fl-view']")
             proposals = None
             if proposals_el:
                 proposals_text = (await proposals_el.inner_text()).strip()

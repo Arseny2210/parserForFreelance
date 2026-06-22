@@ -50,43 +50,33 @@ class KworkScraper(BaseScraper):
                 pass
 
             for cat_name, cat_id in self.CATEGORIES.items():
-                for page_num in range(1, self.pages_per_category + 1):
+                url = f"{self.search_url}?c={cat_id}"
+                try:
+                    await page.goto(url, wait_until="domcontentloaded", timeout=30000)
+                    await page.wait_for_timeout(5000)
+
                     try:
-                        if page_num == 1:
-                            url = f"{self.search_url}?c={cat_id}"
-                        else:
-                            url = f"{self.search_url}?c={cat_id}&page={page_num}"
-
-                        await page.goto(
-                            url, wait_until="domcontentloaded", timeout=30000
+                        await page.wait_for_selector(
+                            "div.want-card.want-card--list", timeout=15000
                         )
-                        await page.wait_for_timeout(8000)
+                    except Exception:
+                        pass
 
-                        cards = await page.query_selector_all(
-                            "div.want-card.want-card--list"
-                        )
-                        card_count = len(cards)
-                        logger.debug(
-                            "Kwork {} page {} (c={}): {} cards",
-                            cat_name,
-                            page_num,
-                            cat_id,
-                            card_count,
-                        )
+                    cards = await page.query_selector_all(
+                        "div.want-card.want-card--list"
+                    )
+                    card_count = len(cards)
+                    logger.debug(
+                        "Kwork {} (c={}): {} cards after initial load",
+                        cat_name,
+                        cat_id,
+                        card_count,
+                    )
 
-                        if card_count == 0:
-                            logger.debug(
-                                "No more cards for Kwork {} at page {}, stopping",
-                                cat_name,
-                                page_num,
-                            )
-                            break
-
+                    if card_count > 0:
                         for card in cards:
                             try:
-                                job = await self._parse_project_card_async(
-                                    card, page_num
-                                )
+                                job = await self._parse_project_card_async(card, 1)
                                 if job:
                                     jid = job.get("id", "")
                                     if jid not in seen_ids:
@@ -94,17 +84,44 @@ class KworkScraper(BaseScraper):
                                         jobs.append(job)
                             except Exception as e:
                                 logger.debug(
-                                    "Error parsing Kwork card on {} page {}: {}",
-                                    cat_name,
-                                    page_num,
-                                    e,
+                                    "Error parsing Kwork card {}: {}", cat_name, e
                                 )
 
-                    except Exception as e:
-                        logger.error(
-                            "Error fetching Kwork {} page {}: {}", cat_name, page_num, e
+                    for scroll_attempt in range(5):
+                        prev_count = len(cards)
+                        await page.evaluate(
+                            "window.scrollTo(0, document.body.scrollHeight)"
                         )
-                        break
+                        await page.wait_for_timeout(4000)
+                        cards = await page.query_selector_all(
+                            "div.want-card.want-card--list"
+                        )
+                        new_count = len(cards)
+                        logger.debug(
+                            "Kwork {} scroll {}: {} cards (+{})",
+                            cat_name,
+                            scroll_attempt + 1,
+                            new_count,
+                            new_count - prev_count,
+                        )
+                        if new_count > prev_count:
+                            for card in cards[prev_count:]:
+                                try:
+                                    job = await self._parse_project_card_async(card, 1)
+                                    if job:
+                                        jid = job.get("id", "")
+                                        if jid not in seen_ids:
+                                            seen_ids.add(jid)
+                                            jobs.append(job)
+                                except Exception as e:
+                                    logger.debug(
+                                        "Error parsing Kwork card {}: {}", cat_name, e
+                                    )
+                        elif card_count > 0 and new_count == prev_count:
+                            break
+
+                except Exception as e:
+                    logger.error("Error fetching Kwork {}: {}", cat_name, e)
 
             await browser.close()
 
