@@ -583,18 +583,37 @@ CATEGORY_KEYWORDS: dict[str, list[str]] = {
 }
 
 
+COMPILED_CATEGORY_PATTERNS: list[tuple[str, list[re.Pattern], re.Pattern]] = [
+    (
+        category,
+        [re.compile(pattern, re.IGNORECASE) for pattern in patterns],
+        re.compile("|".join(f"(?:{p})" for p in patterns), re.IGNORECASE),
+    )
+    for category, patterns in CATEGORY_KEYWORDS.items()
+]
+
+
 def classify_task(title: str, description: Optional[str] = None) -> tuple[str, float]:
-    text = (title + " " + (description or "")).lower()
+    text = title + " " + (description or "")
+    title_len = len(title)
 
     scores: dict[str, float] = {}
-    for category, patterns in CATEGORY_KEYWORDS.items():
+    for category, patterns, quick in COMPILED_CATEGORY_PATTERNS:
+        if not quick.search(text):
+            continue
+
         score = 0.0
         for pattern in patterns:
-            matches = re.findall(pattern, text, re.IGNORECASE)
-            if matches:
-                score += len(matches) * 2.0
+            count = 0
+            title_match = False
+            for match in pattern.finditer(text):
+                count += 1
+                if match.start() < title_len:
+                    title_match = True
 
-                if title and re.search(pattern, title, re.IGNORECASE):
+            if count:
+                score += count * 2.0
+                if title_match:
                     score += 3.0
 
         if score > 0:

@@ -155,7 +155,7 @@ class BaseScraper(ABC):
         return content
 
     def _parse_html(self, html: str) -> BeautifulSoup:
-        return BeautifulSoup(html, "html.parser")
+        return BeautifulSoup(html, "lxml")
 
     async def collect(self) -> list[TaskData]:
         logger.info("Starting collection from {}", self.source_name)

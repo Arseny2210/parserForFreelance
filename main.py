@@ -13,6 +13,7 @@ import asyncio
 import json
 import ssl
 import urllib.request
+from functools import lru_cache
 from typing import Optional
 from pathlib import Path
 from datetime import datetime
@@ -48,21 +49,27 @@ USD_TO_RUB_FALLBACK: float = 90.0
 
 
 def get_usd_to_rub_rate() -> float:
+    rate = _fetch_usd_to_rub_rate()
+    if rate is not None:
+        logger.info("USD/RUB rate fetched from open.er-api.com: {}", rate)
+    return rate or USD_TO_RUB_FALLBACK
+
+
+@lru_cache(maxsize=1)
+def _fetch_usd_to_rub_rate() -> Optional[float]:
     try:
         url = "https://open.er-api.com/v6/latest/USD"
         ctx = ssl._create_unverified_context()
         with urllib.request.urlopen(url, timeout=5, context=ctx) as resp:
             data = json.loads(resp.read().decode())
-            rate = data["rates"]["RUB"]
-            logger.info("USD/RUB rate fetched from open.er-api.com: {}", rate)
-            return float(rate)
+            return float(data["rates"]["RUB"])
     except Exception as e:
         logger.warning(
             "Failed to fetch USD/RUB rate ({}), using fallback: {}",
             e,
             USD_TO_RUB_FALLBACK,
         )
-        return USD_TO_RUB_FALLBACK
+        return None
 
 
 SCRAPER_MAP: dict[str, type] = {

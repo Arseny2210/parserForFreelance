@@ -18,3 +18,6 @@ reports/charts/*.png
 .mypy_cache/
 htmlcov/
 .coverage
+node_modules/
+frontend/dist/
+*.log

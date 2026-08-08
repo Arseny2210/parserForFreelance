@@ -26,11 +26,13 @@ services:
       DATABASE_URL: postgresql+asyncpg://postgres:postgres@db:5432/freelance_market
       DATABASE_URL_SYNC: postgresql://postgres:postgres@db:5432/freelance_market
       LOG_LEVEL: DEBUG
+    ports:
+      - "8000:8000"
     volumes:
       - ./exports:/app/exports
       - ./reports/charts:/app/reports/charts
       - ./logs:/app/logs
-    command: python main.py
+    command: uvicorn backend.main:app --host 0.0.0.0 --port 8000
 
 volumes:
   postgres_data:

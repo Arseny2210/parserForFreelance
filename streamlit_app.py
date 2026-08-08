@@ -539,10 +539,7 @@ with tab_overview:
             f"{(ca.get('overall_average_proposals') or 0):.1f}",
         )
 
-    st.caption(
-        f"Показано: {len(filtered_tasks)} из {len(tasks)} задач"
-        f" (после фильтров: {len(apply_filters(tasks, filters))})"
-    )
+    st.caption(f"Показано: {len(filtered_tasks)} из {len(tasks)} задач")
 
 # ── Tab: Tasks ────────────────────────────────────────────────────
 with tab_tasks_tab:

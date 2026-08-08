@@ -1,0 +1,18 @@
+# Render Blueprint — бесплатный деплой Freelance Market Analyzer
+# Как использовать:
+#   1. Запушьте этот файл в GitHub-репозиторий
+#   2. Откройте https://dashboard.render.com/blueprints
+#   3. "New Blueprint" → подключите репозиторий → Render сам создаст сервис
+services:
+  - type: web
+    name: freelance-market-analyzer
+    runtime: docker
+    repo: https://github.com/Arseny2210/parserForFreelance
+    branch: main
+    plan: free
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /api/health
+    autoDeploy: true
+    envVars:
+      - key: PYTHONPATH
+        value: /app

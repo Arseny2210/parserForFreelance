@@ -132,6 +132,12 @@ TECH_STACK_MAP: dict[str, list[str]] = {
 }
 
 
+COMPILED_TECH_PATTERNS: list[tuple[str, list[re.Pattern]]] = [
+    (tech_name, [re.compile(pattern, re.IGNORECASE) for pattern in patterns])
+    for tech_name, patterns in TECHNOLOGY_PATTERNS.items()
+]
+
+
 class TechnologyExtractor:
     def __init__(self) -> None:
         self.patterns = TECHNOLOGY_PATTERNS
@@ -142,7 +148,7 @@ class TechnologyExtractor:
         description: Optional[str] = None,
         existing_technologies: Optional[list[str]] = None,
     ) -> list[str]:
-        text = (title + " " + (description or "")).lower()
+        text = title + " " + (description or "")
         found: set[str] = set()
 
         if existing_technologies:
@@ -150,9 +156,9 @@ class TechnologyExtractor:
                 tech_lower = tech.lower().strip()
                 found.add(tech_lower)
 
-        for tech_name, patterns in self.patterns.items():
+        for tech_name, patterns in COMPILED_TECH_PATTERNS:
             for pattern in patterns:
-                if re.search(pattern, text, re.IGNORECASE):
+                if pattern.search(text):
                     found.add(tech_name)
                     break
 
